@@ -26,3 +26,7 @@ yarn-error.log*
 functions/serviceAccount.json
 functions/backup-*.json
 backup-*.json
+
+# tooling locale
+.claude/
+.firebase/
