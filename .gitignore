@@ -30,3 +30,11 @@ backup-*.json
 # tooling locale
 .claude/
 .firebase/
+
+# script di utility — spostati in bacheca-scherma-utils
+functions/pulisci-consensi.js
+functions/pulizia-genitori.js
+functions/revoca-token.js
+functions/seed-categorie.js
+/genera-icone.js
+/genera-icone.py
