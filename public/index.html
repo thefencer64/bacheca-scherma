@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/icons/icon-192.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0179C0" />
+    <meta name="description" content="Ricevi gli avvisi della tua società di scherma" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Bacheca Scherma" />
+    <meta name="screen-orientation" content="portrait" />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/icons/icon-152.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="%PUBLIC_URL%/icons/icon-152.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="%PUBLIC_URL%/icons/icon-192.png" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    <title>Bacheca Scherma</title>
+  <style>
+    :root {
+      --sat: env(safe-area-inset-top);
+      --sab: env(safe-area-inset-bottom);
+    }
+    /* Padding bottom nav per iPhone con home indicator */
+    nav.bottom-nav {
+      padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+    }
+  </style>
+  </head>
+  <body>
+    <noscript>Per usare questa app è necessario abilitare JavaScript.</noscript>
+    <div id="root"></div>
+  </body>
+</html>

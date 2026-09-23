@@ -1,0 +1,312 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─────────────────────────────────────────────
+    // Helper globali
+    // ─────────────────────────────────────────────
+
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    // Documento iscrizione dell'utente corrente per una società
+    function iscrizione(societaId) {
+      return get(/databases/$(database)/documents/societa/$(societaId)/iscrizioni/$(request.auth.uid)).data;
+    }
+
+    // L'utente ha un'iscrizione attiva su questa società?
+    function isAttivo(societaId) {
+      return isAuth() && iscrizione(societaId).statoAccount == 'attivo';
+    }
+
+    // L'utente è admin su questa società?
+    function isAdmin(societaId) {
+      return isAuth()
+          && iscrizione(societaId).statoAccount == 'attivo'
+          && iscrizione(societaId).ruoli.hasAll(['admin']);
+    }
+
+    // L'utente ha un certo ruolo (tra atleta/genitore) su questa società?
+    function hasRuolo(societaId, ruolo) {
+      return isAttivo(societaId) && iscrizione(societaId).ruoli.hasAny([ruolo]);
+    }
+
+    // Il documento appartiene all'utente corrente?
+    function isOwner(uid) {
+      return isAuth() && request.auth.uid == uid;
+    }
+
+    // I campi in scrittura sono solo quelli consentiti?
+    function soloICampi(campi) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(campi);
+    }
+
+    // L'utente ha accettato la privacy policy per questa società?
+    function haPrivacyAccettata(uid, societaId) {
+      let ver = get(/databases/$(database)/documents/configPrivacy/corrente).data.versione;
+      let doc = get(/databases/$(database)/documents/consensiPrivacy/$(uid + '_' + societaId + '_' + ver)).data;
+      return doc != null && doc.accettato == true;
+    }
+
+
+    // ─────────────────────────────────────────────
+    // configCategorie (globale, read-only per tutti)
+    // ─────────────────────────────────────────────
+    match /configCategorie/{docId} {
+      allow read: if true;
+      allow write: if false; // solo Admin SDK via Cloud Function
+    }
+
+
+    // ─────────────────────────────────────────────
+    // configPrivacy (globale, read-only per tutti)
+    // ─────────────────────────────────────────────
+    match /configPrivacy/{docId} {
+      allow read: if true;
+      allow write: if false; // solo Admin SDK via Cloud Function
+    }
+
+
+    // ─────────────────────────────────────────────
+    // utenti (globale — solo anagrafica)
+    // ─────────────────────────────────────────────
+    match /utenti/{uid} {
+
+      // Lettura: il proprietario, oppure un utente autenticato
+      // che ha una relazione genitore-figlio con questo utente.
+      // Gli admin leggono via Admin SDK nelle Functions.
+      // NOTA: la regola || isAuth() è più permissiva del necessario ma serve
+      // per permettere ai genitori di leggere i profili dei figli registrati
+      // (che non hanno genitoreUid nel documento). Da stringere in futuro
+      // spostando la lettura dati figli in una Cloud Function dedicata.
+      allow get: if isOwner(uid) || isAuth();
+      allow list: if false;
+
+      // Creazione: l'utente crea il proprio documento al momento
+      // della prima registrazione, oppure un genitore autenticato
+      // crea il documento pre-registrazione per un figlio minore.
+      allow create: if isAuth()
+                    && (
+                      // Caso 1: utente crea il proprio documento
+                      request.auth.uid == uid
+                      // Caso 2: genitore crea documento per figlio
+                      || (request.resource.data.get('genitoreUid', '') == request.auth.uid
+                          && request.resource.data.get('preRegistrato', false) == true)
+                    )
+                    && !('ruoli' in request.resource.data)
+                    && !('statoAccount' in request.resource.data);
+
+      // Aggiornamento: il proprietario aggiorna i propri dati anagrafici.
+      // L'admin può aggiornare i dati di qualsiasi utente della propria società.
+      // fcmTokens gestito dalla Cloud Function aggiornaFcmToken.
+      allow update: if isOwner(uid)
+                    && soloICampi([
+                         'nome','cognome','telefono','dataNascita',
+                         'profiloCompleto','aggiornatoAt'
+                       ]);
+
+      allow delete: if false;
+    }
+
+
+    // ─────────────────────────────────────────────
+    // consensiPrivacy (globale — log immutabile GDPR)
+    // ID: {uid}_{societaId}_{versione}
+    // ─────────────────────────────────────────────
+    match /consensiPrivacy/{consensoId} {
+
+      allow read: if isAuth()
+                  && (resource == null
+                      || resource.data.uid == request.auth.uid
+                      || resource.data.accettatoDa == request.auth.uid);
+
+      // Consenso per sé stesso
+      allow create: if isAuth()
+                    && request.resource.data.uid == request.auth.uid
+                    && request.resource.data.accettatoDa == request.auth.uid
+                    && request.resource.data.accettato == true
+                    && request.resource.data.perConto == false
+                    && !('figlioUid' in request.resource.data)
+                    && request.resource.data.keys().hasAll([
+                         'uid','societaId','accettatoDa','versione','accettato',
+                         'timestamp','ip','userAgent','perConto'
+                       ])
+                    // Consenso del genitore per conto del figlio
+                    || isAuth()
+                    && request.resource.data.perConto == true
+                    && request.resource.data.accettatoDa == request.auth.uid
+                    && 'figlioUid' in request.resource.data
+                    && request.resource.data.keys().hasAll([
+                         'uid','societaId','accettatoDa','versione','accettato',
+                         'timestamp','ip','userAgent','perConto','figlioUid'
+                       ]);
+
+      allow update: if false;
+      allow delete: if false;
+    }
+
+
+    // ─────────────────────────────────────────────
+    // societa (documento radice)
+    // ─────────────────────────────────────────────
+    match /societa/{societaId} {
+
+      // Tutti possono leggere i dati base della società
+      // (nome, logo) per mostrare la lista delle società disponibili
+      allow read: if isAuth();
+
+      // Creazione: solo Admin SDK (onboarding nuova società)
+      allow create: if false;
+
+      // Aggiornamento: solo admin della società
+      // L'admin può modificare emailNotifiche, scadenzaRinnovo, rinnovoAperto
+      // ma NON annoSchermistico direttamente (lo aggiorna la Cloud Function)
+      allow update: if isAdmin(societaId)
+                    && soloICampi([
+                         'nome','citta','logoUrl','emailNotifiche',
+                         'scadenzaRinnovo','rinnovoAperto','aggiornatoAt'
+                       ]);
+
+      allow delete: if false;
+
+
+      // ── iscrizioni ──────────────────────────────
+      match /iscrizioni/{uid} {
+
+        // Lettura singola: il proprietario, l'admin,
+        // o qualsiasi utente attivo nella stessa società
+        // (necessario per il genitore che legge l'iscrizione del figlio)
+        allow get: if isOwner(uid)
+                   || isAdmin(societaId)
+                   || isAttivo(societaId);
+        // Lista intera collezione: solo admin
+        allow list: if isAuth() && exists(/databases/$(database)/documents/societa/$(societaId)/iscrizioni/$(request.auth.uid));
+
+        // Creazione: l'utente crea la propria iscrizione, oppure
+        // un genitore crea l'iscrizione per un figlio minore.
+        allow create: if isAuth()
+                      && (
+                        // Caso 1: utente crea la propria iscrizione
+                        (request.auth.uid == uid
+                         && haPrivacyAccettata(uid, societaId)
+                         && request.resource.data.statoAccount == 'in_attesa')
+                        ||
+                        // Caso 2: genitore crea iscrizione per figlio
+                        (request.auth.uid != uid
+                         && isAttivo(societaId)
+                         && request.resource.data.statoAccount == 'pre_registrato'
+                         && request.resource.data.uid == uid)
+                      )
+                      && !request.resource.data.ruoli.hasAny(['admin']);
+
+        // Aggiornamento: l'utente può modificare solo le proprie preferenze.
+        // Tutto il resto (statoAccount, ruoli, categoriaCalcolata) lo gestisce
+        // l'Admin SDK tramite Cloud Functions.
+        allow update: if isOwner(uid)
+                      && isAttivo(societaId)
+                      && soloICampi(['preferenzeNotifiche','aggiornatoAt','ultimaVisita'])
+                      || isAdmin(societaId);
+
+        allow delete: if false;
+      }
+
+
+      // ── relazioni (genitore ↔ figlio, per società) ──
+      match /relazioni/{relId} {
+
+        allow get:  if isAdmin(societaId)
+                    || (isAuth() && (
+                         resource.data.genitoreUid == request.auth.uid ||
+                         resource.data.figlioUid   == request.auth.uid
+                       ));
+        allow list: if isAuth() && exists(
+          /databases/$(database)/documents/societa/$(societaId)/iscrizioni/$(request.auth.uid)
+        );
+
+        // Solo un genitore attivo su questa società può creare una relazione.
+        allow create: if isAttivo(societaId)
+                      && request.resource.data.genitoreUid == request.auth.uid
+                      && !('approvataAt' in request.resource.data)
+                      && !('approvataDA' in request.resource.data)
+                      && request.resource.data.keys().hasAll([
+                           'genitoreUid','figlioUid','consensoAt','consensoIP'
+                         ]);
+
+        // Il genitore può aggiornare le preferenze notifiche per questo figlio.
+        // L'admin può aggiornare tutto (approvazione).
+        allow update: if isAdmin(societaId)
+                      || isAuth()
+                      && resource.data.genitoreUid == request.auth.uid
+                      && isAttivo(societaId)
+                      && soloICampi(['prefGenitore','aggiornatoAt']);
+
+        allow delete: if isAdmin(societaId);
+      }
+
+
+      // ── avvisi ──────────────────────────────────
+      match /avvisi/{avvisoId} {
+
+        // Gli iscritti attivi leggono solo gli avvisi visibili.
+        // L'admin legge tutto (incluse le bozze).
+        allow get:  if isAttivo(societaId) && resource.data.visibile == true
+                    || isAdmin(societaId);
+        // list usa exists() per evitare get interni bloccati da Firestore
+        allow list: if isAuth() && exists(
+          /databases/$(database)/documents/societa/$(societaId)/iscrizioni/$(request.auth.uid)
+        );
+
+        // Solo l'admin pubblica avvisi.
+        // pushInviata parte sempre a false — lo aggiorna la Cloud Function.
+        allow create: if isAdmin(societaId)
+                      && request.resource.data.pushInviata == false
+                      && request.resource.data.autoreUid == request.auth.uid
+                      && request.resource.data.keys().hasAll([
+                           'titolo','corpo','categorieTarget','autoreUid',
+                           'dataCreazione','pinned','visibile','pushInviata'
+                         ]);
+
+        allow update: if isAdmin(societaId)
+                      && !('pushInviata' in
+                           request.resource.data.diff(resource.data).affectedKeys());
+
+        allow delete: if isAdmin(societaId);
+      }
+
+
+      // ── notificheAdmin (in-app per il pannello admin) ──
+      match /notificheAdmin/{notId} {
+
+        // Solo l'admin legge le notifiche del proprio pannello.
+        allow read, list: if isAdmin(societaId);
+
+        // Scrittura: solo Admin SDK (Cloud Functions).
+        // L'admin può marcare come letta.
+        allow update: if isAdmin(societaId)
+                      && soloICampi(['letta','lettaAt']);
+
+        allow create: if false;
+        allow delete: if false;
+      }
+
+
+      // ── notifiche (log push inviati) ────────────
+      match /notifiche/{notId} {
+        allow read: if isAdmin(societaId);
+        allow write: if false; // solo Admin SDK
+      }
+
+    } // fine match /societa/{societaId}
+
+
+    // ─────────────────────────────────────────────
+    // Blocca tutto il resto
+    // ─────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+  }
+}

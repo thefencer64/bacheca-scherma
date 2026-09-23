@@ -1,0 +1,18 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Loghi delle società: leggibili da tutti gli autenticati,
+    // scrivibili solo tramite Admin SDK (Cloud Function)
+    match /loghi/{societaId}/{fileName} {
+      allow read:  if request.auth != null;
+      allow write: if false;
+    }
+
+    // Blocca tutto il resto
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
