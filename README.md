@@ -1,4 +1,16 @@
-# Bacheca Scherma
+<p align="center">
+  <img src="public/icons/icon-192.png" width="96" alt="Bacheca Scherma">
+</p>
+
+<h1 align="center">Bacheca Scherma</h1>
+
+<p align="center">
+  <img alt="React" src="https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white&labelColor=20232a">
+  <img alt="Firebase" src="https://img.shields.io/badge/Firebase-Firestore%20%7C%20Auth%20%7C%20Functions-FFCA28?logo=firebase&logoColor=white&labelColor=333">
+  <img alt="Tailwind CSS" src="https://img.shields.io/badge/Tailwind_CSS-38B2AC?logo=tailwind-css&logoColor=white">
+  <img alt="PWA" src="https://img.shields.io/badge/PWA-Web%20Push%20%7C%20Offline-5A0FC8?logo=pwa&logoColor=white">
+  <img alt="License" src="https://img.shields.io/badge/license-MIT-blue.svg">
+</p>
 
 Progressive Web App per la gestione di comunicazioni e iscrizioni nelle società di scherma italiane. Mobile-first, multi-società (un sottodominio per club), in italiano.
 
