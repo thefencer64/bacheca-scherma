@@ -14,6 +14,7 @@
 const authFn  = require('./auth');
 const adminFn = require('./admin');
 const notifFn = require('./notifiche');
+const mailFn  = require('./mailSend');
 
 // Auth / lifecycle
 exports.onUtenteCreato        = authFn.onUtenteCreato;
@@ -41,3 +42,7 @@ exports.inviaMessaggioIscritti    = adminFn.inviaMessaggioIscritti;
 exports.onAvvisoCreato        = notifFn.onAvvisoCreato;
 exports.inviaNotifica         = notifFn.inviaNotifica;
 exports.modificaIscritto            = adminFn.modificaIscritto;
+
+// Mail (sostituisce l'estensione deprecata firebase/firestore-send-email —
+// NON deployare finché l'estensione non è stata disinstallata, vedi mailSend.js)
+exports.onMailCreata          = mailFn.onMailCreata;
